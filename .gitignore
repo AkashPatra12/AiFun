@@ -1,0 +1,13 @@
+frontend/node_modules/
+frontend/dist/
+
+backend/__pycache__/
+backend/**/*.pyc
+backend/.venv/
+backend/.env
+
+backend/data/input/*
+backend/data/interim/*
+backend/data/cache/*
+backend/data/output/*
+!backend/data/**/.gitkeep

@@ -1,0 +1,19 @@
+pipeline:
+  target_aspect_ratio: "9:16"
+  target_duration_seconds: [15, 60]
+  max_clips_per_video: 5
+
+transcribe:
+  model: "whisper-large-v3"
+
+analysis:
+  llm_model: "claude-sonnet-5"
+
+captions:
+  style: "bold-center"
+  font: "assets/fonts/"
+
+render:
+  output_format: "mp4"
+  codec: "libx264"
+  fps: 30
