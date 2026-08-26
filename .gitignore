@@ -1,13 +1,13 @@
-frontend/node_modules/
-frontend/dist/
+web/node_modules/
+web/dist/
 
-backend/__pycache__/
+engine/__pycache__/
 backend/**/*.pyc
-backend/.venv/
-backend/.env
+engine/.venv/
+engine/.env
 
-backend/data/input/*
-backend/data/interim/*
-backend/data/cache/*
-backend/data/output/*
-!backend/data/**/.gitkeep
+engine/data/input/*
+engine/data/interim/*
+engine/data/cache/*
+engine/data/output/*
+!engine/data/**/.gitkeep

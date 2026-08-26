@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aifun.dev/contracts/trend.schema.json",
+  "title": "Trend",
+  "description": "Engine-internal, in-process (Dev A1 -> Dev A2): the chosen trending track and its beat grid, for beat-synced cutting.",
+  "type": "object",
+  "required": ["trendId", "audioPath", "beatTimes"],
+  "additionalProperties": false,
+  "properties": {
+    "trendId": { "type": "string" },
+    "audioPath": { "type": "string", "description": "Path/URL to the trend audio file." },
+    "bpm": { "type": "number", "minimum": 0 },
+    "beatTimes": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0 },
+      "description": "Seconds from track start, one entry per detected beat."
+    }
+  }
+}

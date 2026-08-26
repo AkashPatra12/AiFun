@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aifun.dev/contracts/highlight.schema.json",
+  "title": "Highlights",
+  "description": "Engine-internal, in-process (Dev A1 -> Dev A2): the chosen segments to cut, reframe, and caption.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["sourceMediaId", "start", "end", "score"],
+    "additionalProperties": false,
+    "properties": {
+      "sourceMediaId": { "type": "string" },
+      "start": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Segment start, seconds from the source media's start."
+      },
+      "end": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Segment end, seconds from the source media's start."
+      },
+      "score": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Highlight confidence/quality score, used to rank and pick the top N."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why this segment was picked (debugging / UI display)."
+      }
+    }
+  }
+}

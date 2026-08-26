@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aifun.dev/contracts/render-job.schema.json",
+  "title": "Render Job",
+  "description": "Platform <-> Engine (network). RenderJobRequest is POSTed to Engine's /jobs; RenderCompleteWebhook is POSTed back to Platform's /webhooks/render-complete.",
+  "definitions": {
+    "RenderJobRequest": {
+      "type": "object",
+      "required": ["jobId", "mediaIds", "style"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "type": "string", "format": "uuid" },
+        "mediaIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Object-storage ids/keys of the source media to render from."
+        },
+        "trendId": {
+          "type": ["string", "null"],
+          "description": "Id of a trend from the trend cache to beat-sync to, or null to skip beat-sync."
+        },
+        "style": {
+          "type": "string",
+          "description": "Style preset id (caption font/color, transitions, etc.)."
+        }
+      }
+    },
+    "RenderCompleteWebhook": {
+      "type": "object",
+      "required": ["jobId", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "type": "string", "format": "uuid" },
+        "status": { "type": "string", "enum": ["completed", "failed"] },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["clipUrl", "thumbnailUrl"],
+            "additionalProperties": false,
+            "properties": {
+              "clipUrl": { "type": "string", "format": "uri" },
+              "thumbnailUrl": { "type": "string", "format": "uri" },
+              "durationSeconds": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "error": {
+          "type": ["string", "null"],
+          "description": "Present when status is \"failed\"."
+        }
+      }
+    }
+  }
+}
