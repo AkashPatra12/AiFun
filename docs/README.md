@@ -30,16 +30,13 @@ deployed almost completely independently (see [Team Split](#team-split)).
 
 ## 2. Architecture
 
-Two services talking over a small, frozen REST + webhook contract — this is
-what lets the two devs work independently.
+Two services talking over a small, frozen REST contract — this is what lets
+the two devs work independently.
 
 ```mermaid
 flowchart LR
-    subgraph Web["Platform (Next.js) — Dev B"]
-        UI[Upload / Timeline UI]
-        API[API routes: auth, projects, jobs]
-        DB[(Postgres)]
-        S3[(Object storage)]
+    subgraph Web["Platform — Dev B"]
+        UI[Vite SPA: Upload / Timeline UI]
     end
 
     subgraph EngineA1["Engine: Understand — Dev A1"]
@@ -55,15 +52,17 @@ flowchart LR
     end
 
     subgraph EngineA2["Engine: Assemble — Dev A2"]
-        Intake[FastAPI job intake]
+        Intake[FastAPI: auth, projects, job intake]
+        DB[(Postgres)]
         Queue[[Redis queue]]
         Worker[Render worker\nFFmpeg / MoviePy]
+        S3[(Object storage)]
     end
 
-    UI --> API --> DB
-    API -- "POST /jobs {mediaIds, trendId, style}" --> Intake
+    UI -- "REST: auth, projects, uploads, jobs" --> Intake
+    Intake --> DB
     Intake --> Queue --> Worker
-    Worker -- "webhook: render-complete" --> API
+    Worker --> DB
     Worker <--> S3
     Highlights -. frozen contract .-> Worker
     TrendJson -. frozen contract .-> Worker
@@ -85,18 +84,27 @@ flowchart LR
 ## 3. Tech Stack
 
 ### Frontend + Platform (Dev B)
-- **Next.js 14+ (App Router, TypeScript)**
+- **React 19 + TypeScript** (strict mode)
+- **Vite** + **PNPM** — build/tooling
+- **Tanstack Router** (routing + URL state) + **Tanstack Query** (server state)
+  + **Zustand** (global state)
+- **React Hook Form + Zod** — forms/validation
 - **Tailwind CSS + shadcn/ui**
-- **React Query** (server state) + **Zustand** (UI state)
 - Native `<video>` / **react-player** for preview
-- Chunked uploads via presigned URLs (Uppy or plain `fetch`)
-- **NextAuth.js** or **Supabase Auth** for login
-- **Prisma** ORM over **Supabase Postgres** (free tier)
-- Storage: **Supabase Storage** or **Cloudflare R2** (10 GB free, no egress fee)
-- Hosting: **Vercel** (Hobby, free)
+- Chunked uploads via presigned URLs (Uppy or plain `fetch`) — URLs issued by
+  the Reel Engine API
+- Testing: **Vitest** (unit), **Playwright** (E2E), **MSW** (API mocking)
+- No backend of its own — a pure static SPA. Auth, DB, and storage all live
+  behind the Reel Engine API (see below); Dev B talks to it over REST.
+- Hosting: static SPA on **Vercel/Netlify/Cloudflare Pages** (free)
 
 ### Reel Engine (Dev A)
-- **Python 3.11 + FastAPI** — job intake API
+- **Python 3.11 + FastAPI** — single API: auth, project/media management,
+  and job intake, all in one service (no separate Platform backend)
+- **SQLAlchemy** (or the `supabase-py` client) over **Supabase Postgres**
+  (free tier) — Python-side ORM; Prisma doesn't fit now that the surviving
+  API is Python, not Node
+- **Supabase Auth**, verified from the Python side, for login
 - **Celery or RQ + Redis** — async job queue
 - **FFmpeg** — crop/resize/mux/final render
 - **MoviePy** — clip composition on top of FFmpeg
@@ -106,6 +114,8 @@ flowchart LR
 - *(optional)* **Ollama + a small local LLM** (e.g. `llama3.2:3b`) — caption
   copy / hashtag suggestions, fully local
 - **Playwright** or `requests` + `BeautifulSoup` — pull public trend data
+- Storage: **Supabase Storage** or **Cloudflare R2** (10 GB free, no egress
+  fee) — presigned URLs issued here
 - Hosting: self-hosted on a dev machine, or a small VM — this is the only
   compute-heavy piece, keep it local to stay at $0
 
@@ -121,7 +131,7 @@ flowchart LR
 | Component | Zero-cost option | Paid upgrade (only if you outgrow free tier) |
 |---|---|---|
 | Frontend hosting | Vercel Hobby | Custom domain/team seats |
-| API hosting | Render/Railway free tier, or self-host | Sustained traffic beyond free tier |
+| API hosting | Same host as the Reel Engine (self-hosted machine / small VM) | Sustained traffic beyond free tier |
 | Database | Supabase free (500 MB) | More storage / compute |
 | Object storage | Cloudflare R2 free (10 GB) | >10 GB media |
 | Queue | Local Redis (Docker) or Upstash free (10k cmds/day) | High job volume |
@@ -156,49 +166,51 @@ per reel, not dollars.
 3. `docker-compose.yml` with `redis` + `postgres` for local dev.
 
 **Phase 1 — Platform MVP (Dev B)**
-4. Auth + project CRUD.
-5. Media upload → object storage via presigned URLs.
-6. "Generate reel" flow that POSTs a job to a *mocked* Engine and shows a
-   fake progress bar → preview player.
+4. Upload UI + "generate reel" flow that calls a *mocked* Engine API (MSW)
+   and shows a fake progress bar → preview player.
+5. Auth and project screens built against the same mocked API — real
+   auth/project endpoints land in Phase 2 on the Engine side.
 
 **Phase 2 — Engine: Assemble MVP (Dev A2)**
-7. FastAPI job intake + Redis-backed worker skeleton.
-8. Basic FFmpeg pipeline driven by a *fixture* `highlights.json` (hand-written,
+6. FastAPI app: auth, project CRUD, media upload → object storage via
+   presigned URLs, job intake + Redis-backed worker skeleton.
+7. Basic FFmpeg pipeline driven by a *fixture* `highlights.json` (hand-written,
    matching the frozen contract — no real analysis yet): concatenate the
    given clips, crop to 9:16, lay a fixed audio track underneath, export mp4.
-9. Webhook callback to Platform on completion.
+8. Worker writes job status/result straight to Postgres — Platform polls
+   `GET /jobs/{id}` for it, no webhook needed.
 
 **Phase 3 — Engine: Understand MVP (Dev A1, parallel with Phase 2)**
-10. Ingest loader + Whisper transcription.
-11. PySceneDetect + OpenCV scene scoring, combined with transcript scoring,
+9. Ingest loader + Whisper transcription.
+10. PySceneDetect + OpenCV scene scoring, combined with transcript scoring,
     to auto-pick the best segments → emit `highlights.json` against the same
     contract Dev A2 already built Phase 2 against.
-12. Aesthetic/quality scoring for photos (sharpness, exposure, face
+11. Aesthetic/quality scoring for photos (sharpness, exposure, face
     presence) for photo-mode reels.
 
 **Phase 4 — Smart editing & captions (Dev A2, once Phase 3 lands)**
-13. Swap the Phase 2 fixture for Dev A1's real `highlights.json`.
-14. Burn in Whisper-transcript captions; audio normalize.
+12. Swap the Phase 2 fixture for Dev A1's real `highlights.json`.
+13. Burn in Whisper-transcript captions; audio normalize.
 
 **Phase 5 — Trend intelligence (Dev A1, can start anytime after Phase 0,
 fully parallel with Phases 2-4)**
-15. Scraper/cron pulling trending sounds/hashtags (TikTok Creative Center
+14. Scraper/cron pulling trending sounds/hashtags (TikTok Creative Center
     public trends page, YouTube trending Shorts via Data API free quota).
-16. Trend cache table + "list current trends" / "pick a trend" endpoint.
-17. librosa beat detection on the chosen track → emit `trend.json` (audio
+15. Trend cache table + "list current trends" / "pick a trend" endpoint.
+16. librosa beat detection on the chosen track → emit `trend.json` (audio
     path + beat grid) against the frozen contract.
 
 **Phase 6 — Beat-synced cutting (Dev A2, once Phase 5 lands)**
-18. Consume Dev A1's `trend.json` for beat-synced cut points.
+17. Consume Dev A1's `trend.json` for beat-synced cut points.
 
 **Phase 7 — Editing & polish (Dev B)**
-19. Timeline UI: reorder/trim/swap clips, swap the trend/music, regenerate
+18. Timeline UI: reorder/trim/swap clips, swap the trend/music, regenerate
     a single segment instead of the whole reel.
-20. Style presets — font/color/transition packs.
+19. Style presets — font/color/transition packs.
 
 **Phase 8 — Publishing (optional/stretch, any dev)**
-21. Instagram Graph API + TikTok Content Posting API integration.
-22. Scheduling / queueing of posts.
+20. Instagram Graph API + TikTok Content Posting API integration.
+21. Scheduling / queueing of posts.
 
 ---
 
@@ -221,25 +233,28 @@ Tests standalone: CLI/pytest on sample videos — no queue, no API, no A2 or
 Dev B code needs to run.
 
 **Dev A2 — Engine: Assemble** (`engine/src/aifun/{editing,render,export}`
-+ new job-intake API and Redis worker)
-Owns: FastAPI job intake, Redis queue/worker, clip cutting, reframe to
-9:16, caption burn-in, audio mix/normalize, FFmpeg/MoviePy render, export,
-webhook to Platform.
++ FastAPI app and Redis worker)
+Owns: the single API — auth, project/media management, job intake — plus
+Redis queue/worker, clip cutting, reframe to 9:16, caption burn-in, audio
+mix/normalize, FFmpeg/MoviePy render, export. No webhook back to Platform
+needed: the worker writes job status/results straight to the Postgres DB
+it owns, and Platform just polls the same API for status.
 Consumes: `highlights.json` + `trend.json` — starts against hand-written
 fixtures matching the contract (Phase 2) so it never blocks on A1's real
 output landing (swapped in at Phase 4/6).
 Tests standalone: curl/Postman/pytest against fixture JSON — no real
 analysis, no Dev B, needed.
 
-**Dev B — Platform** (`/web`, Next.js, product/UI-heavy)
-Owns: auth, project/media management, upload, timeline editor UI, job
-orchestration & status, (optional) social publishing integrations.
+**Dev B — Platform** (`/web`, Vite + React SPA — no backend of its own)
+Owns: upload UI, timeline editor UI, job status UI, (optional) social
+publishing integrations — all calling the Reel Engine API directly for
+auth, project/media data, and job orchestration.
 
-**Integration points (4 total — 2 network, 2 in-process):**
-- `POST /jobs` — Platform → Engine (A2), submit a render job. *(network,
-  `contracts/render-job.schema.json`)*
-- `POST /webhooks/render-complete` — Engine (A2) → Platform, deliver the
-  result. *(network, same schema)*
+**Integration points (3 total — 1 network, 2 in-process):**
+- Platform SPA ↔ Reel Engine API — auth, project/media CRUD, `POST /jobs`
+  to submit a render job, `GET /jobs/{id}` / `GET /videos/{id}/clips` to
+  poll status and fetch results. *(network, `contracts/render-job.schema.json`
+  for the job-shaped calls)*
 - `highlights.json` — A1 → A2, chosen segments to cut/caption. *(in-process
   — same Python package — `contracts/highlight.schema.json`)*
 - `trend.json` — A1 → A2, audio track + beat grid for beat-synced cutting.
@@ -251,8 +266,9 @@ orchestration & status, (optional) social publishing integrations.
 
 ```
 AiFun/
-├── web/                        # Dev B — Next.js platform
-├── engine/                     # Python reel engine
+├── web/                        # Dev B — Vite + React SPA (Platform UI)
+├── engine/                     # Python reel engine — also serves the
+│   │                           # auth/projects/jobs API (single backend)
 │   └── src/aifun/
 │       ├── ingest/              ─┐
 │       ├── transcribe/           │ Dev A1 — Understand
@@ -262,7 +278,7 @@ AiFun/
 │       ├── editing/             ─┐
 │       ├── render/               │ Dev A2 — Assemble
 │       ├── export/               │ (consumes highlights.json/trend.json)
-│       └── api/, worker/        ─┘ (job intake + queue, new)
+│       └── api/, worker/        ─┘ (auth, projects, job intake + queue)
 ├── contracts/                  # shared schemas (source of truth)
 │   ├── render-job.schema.json   # Platform <-> Engine (network)
 │   ├── highlight.schema.json    # Dev A1 <-> Dev A2 (in-process)
@@ -276,8 +292,8 @@ AiFun/
 ```bash
 git clone https://github.com/AkashPatra12/AiFun.git
 cd AiFun
-docker compose up -d          # redis + postgres
+docker compose up -d                     # redis + postgres
 
-cd web && npm install && npm run dev        # Platform, Dev B
-cd ../engine && pip install -r requirements.txt && uvicorn main:app --reload  # Engine, Dev A
+cd web && pnpm install && pnpm dev                                            # Platform SPA, Dev B
+cd ../engine && pip install -r requirements.txt && uvicorn main:app --reload  # Engine API (auth, projects, jobs) + worker, Dev A
 ```
