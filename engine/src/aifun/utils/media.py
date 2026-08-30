@@ -5,6 +5,7 @@ from pathlib import Path
 
 ENGINE_ROOT = Path(__file__).resolve().parents[3]
 DATA_INPUT_DIR = ENGINE_ROOT / "data" / "input"
+DATA_OUTPUT_DIR = ENGINE_ROOT / "data" / "output"
 
 
 def save_upload(media_id: uuid.UUID, ext: str, data: bytes) -> Path:
