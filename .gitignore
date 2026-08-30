@@ -1,7 +1,8 @@
 web/node_modules/
 web/dist/
 
-engine/__pycache__/
+engine/**/__pycache__/
+*.egg-info/
 backend/**/*.pyc
 engine/.venv/
 engine/.env
