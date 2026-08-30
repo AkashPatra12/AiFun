@@ -8,7 +8,7 @@ as the consumer of what this slice produces, and as the thing this slice's
 This is a **local-only, no-cloud** phase — everything in this doc runs on
 one machine, no hosted services. It deliberately diverges from
 `docs/README.md`'s Phase 1/2 (which assume a mocked API and cloud object
-storage) — see [§8, Deviations from docs/README.md](#8-deviations-from-docsreadmemd).
+storage) — see [§9, Deviations from docs/README.md](#9-deviations-from-docsreadmemd).
 
 ---
 
@@ -199,7 +199,21 @@ once `status="processed"`). Used two ways by the same endpoint:
 No separate thumbnail/preview pipeline in this slice — the modal plays the
 actual processed file.
 
-## 8. Deviations from docs/README.md
+## 8. Error responses
+
+Status codes for the invalid-state and invalid-input cases referenced in
+§5–§7 (decided during step 6+7 implementation, not fully specified above):
+
+| Case | Route(s) | Status |
+|---|---|---|
+| `media_id` doesn't exist | `POST /media/{id}/process`, `GET /media/{id}/output` | `404 Not Found` |
+| `media_id` exists but is in the wrong status for the action (`process` called while `processing`/`processed`; `output` requested before `status="processed"`) | `POST /media/{id}/process`, `GET /media/{id}/output` | `409 Conflict` |
+| `kind`/file-extension mismatch, or extension not in the accepted set (§4) | `POST /media` | `400 Bad Request` |
+
+`POST /media/{id}/process` remains valid from both `uploaded` and `failed`
+(retry), per §2 — the 409 above only fires from `processing`/`processed`.
+
+## 9. Deviations from docs/README.md
 
 | Topic | docs/README.md says | This doc says (Phase 1) |
 |---|---|---|
@@ -214,14 +228,79 @@ the Job queue row and swap the in-process trigger for Celery/RQ + Redis —
 that's the point at which `trigger_processing(media_id)` (see §1) needs to
 become a queue push instead of a function call.
 
-## 9. Local dev tooling (informational, not architecture)
+## 10. Local dev tooling (informational, not architecture)
 
 - Postgres runs in Docker (Docker Desktop already installed).
 - DB inspection: Microsoft's official **PostgreSQL** VS Code extension
   (`ms-ossdata.vscode-pgsql`), connecting to `localhost:5432` once the
   compose file publishes that port.
 
-## 10. Build order
+### Running the backend locally
+
+```bash
+# from repo root — bring up Postgres if it isn't already running
+docker compose up -d
+
+# from engine/
+source .venv/bin/activate
+uvicorn aifun.api.app:app --reload --port 8000
+```
+
+`/docs` (Swagger UI) is served at `http://localhost:8000/docs`. Smoke-test
+an upload with a throwaway synthetic clip (no need for a real sample file —
+see [§ seed data](#seed-test-data) below for why one isn't checked in):
+
+```bash
+ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=10 -y /tmp/sample.mp4 -loglevel error
+curl -X POST http://localhost:8000/media \
+  -F "file=@/tmp/sample.mp4;type=video/mp4" \
+  -F "kind=video" \
+  -F "autoProcess=true"
+```
+
+Poll `GET /media` a couple seconds later to see `status` flip to
+`"processed"`, then fetch `GET /media/{id}/output`.
+
+To exercise the photo path (`durationSeconds` should come back `null`,
+`width`/`height` still populated):
+
+```bash
+ffmpeg -f lavfi -i color=c=blue:s=640x480 -frames:v 1 -y /tmp/sample.jpg -loglevel error
+curl -X POST http://localhost:8000/media \
+  -F "file=@/tmp/sample.jpg;type=image/jpeg" \
+  -F "kind=photo" \
+  -F "autoProcess=true"
+```
+
+### Connecting the VS Code Postgres extension
+
+1. Install `ms-ossdata.vscode-pgsql` (Microsoft's official PostgreSQL
+   extension).
+2. Open its sidebar → **New Connection** → **Parameters** tab.
+3. Fill in (values match [engine/.env](../engine/.env)):
+   - **Server name:** `localhost` — **not** `localhost:5432`; the field
+     resolves this as a literal hostname, so appending the port here fails
+     with `nodename nor servname provided`. Set the port under **Advanced**
+     if there's no separate port field (default `5432` otherwise).
+   - **Authentication type:** Password
+   - **User name:** `aifun`
+   - **Password:** `aifun`
+   - **Database name:** `aifun`
+4. **Test Connection**, then **Save & Connect**.
+5. Browse data: expand **connection → Databases → `aifun` → Schemas →
+   `public` → Tables → `media`**, right-click → "Select Top N Rows". Or
+   open a new query against the connection and run
+   `SELECT * FROM media ORDER BY created_at DESC;`.
+
+### Seed test data {#seed-test-data}
+
+No sample video is checked into the repo — `engine/data/input/` is
+gitignored anyway (see [.gitignore](../.gitignore)), and a real media file
+would be repo-bloating binary content for something fully reproducible on
+demand. Use the one-line `ffmpeg testsrc` command above to generate a
+throwaway clip for manual testing instead.
+
+## 11. Build order
 
 Backend first, verified standalone, before any frontend work — so a broken
 UI is never masking a broken API.
@@ -258,6 +337,6 @@ UI is never masking a broken API.
 Tests are deferred to a follow-up pass (pytest/TestClient for the API,
 Vitest for the UI) — this build gets working code first.
 
-## 11. Open questions to close before writing code
+## 12. Open questions to close before writing code
 
 None outstanding — all Phase 1 decisions above are final.
