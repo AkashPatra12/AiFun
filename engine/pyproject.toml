@@ -13,6 +13,9 @@ dependencies = [
     "sqlalchemy",
     "psycopg[binary]",
     "python-dotenv",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
 ]
 
 [project.scripts]
