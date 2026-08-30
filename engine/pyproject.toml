@@ -10,6 +10,9 @@ dependencies = [
     "pydantic",
     "pyyaml",
     "typer",
+    "sqlalchemy",
+    "psycopg[binary]",
+    "python-dotenv",
 ]
 
 [project.scripts]
