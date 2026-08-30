@@ -235,7 +235,7 @@ become a queue push instead of a function call.
   (`ms-ossdata.vscode-pgsql`), connecting to `localhost:5432` once the
   compose file publishes that port.
 
-### Running the backend locally
+### Running the backend locally (venv)
 
 ```bash
 # from repo root — bring up Postgres if it isn't already running
@@ -245,6 +245,35 @@ docker compose up -d
 source .venv/bin/activate
 uvicorn aifun.api.app:app --reload --port 8000
 ```
+
+### Running the backend fully containerized (Docker)
+
+The `api` service in `docker-compose.yml` builds `engine/Dockerfile` (Python
++ `ffmpeg`) and runs both Postgres and the API together — no local venv
+needed.
+
+```bash
+# from repo root
+docker compose up --build
+```
+
+`--build` is only needed the first time, or after changing
+`engine/Dockerfile`, `pyproject.toml`, or anything under `engine/src` —
+otherwise plain `docker compose up` reuses the already-built image.
+API is at `http://localhost:8000` once Postgres's healthcheck passes.
+
+Stop with **Ctrl+C** (foreground) or, from another terminal:
+
+```bash
+docker compose down
+```
+
+This removes the containers but **not** the image or data — the built
+`aifun-api` image, the `postgres_data` volume (DB rows), and the
+bind-mounted `engine/data/` (uploaded/processed files) all survive a
+`down`/restart/rebuild. Only `docker compose down -v` drops the Postgres
+volume, and only deleting files under `engine/data/` removes media —
+neither happens as a side effect of normal stop/start.
 
 `/docs` (Swagger UI) is served at `http://localhost:8000/docs`. Smoke-test
 an upload with a throwaway synthetic clip (no need for a real sample file —

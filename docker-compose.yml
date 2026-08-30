@@ -9,6 +9,24 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aifun"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./engine
+    env_file: ./engine/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://aifun:aifun@postgres:5432/aifun
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./engine/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
