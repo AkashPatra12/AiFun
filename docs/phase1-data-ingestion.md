@@ -353,6 +353,31 @@ curl -X POST http://localhost:8000/media \
    open a new query against the connection and run
    `SELECT * FROM media ORDER BY created_at DESC;`.
 
+### Running tests
+
+**Backend** (from `engine/`, venv active, Postgres up via `docker compose up -d`):
+
+```bash
+pip install -e ".[test]"   # once, or after pyproject.toml changes
+pytest
+```
+
+`engine/tests/conftest.py`'s `client` fixture runs each test's DB writes in
+a transaction that's rolled back afterward, against the real
+`docker-compose.yml` Postgres — no separate test database needed, and
+nothing persists past the test. `test_assemble.py` shells out to the real
+`ffmpeg`/`ffprobe` binaries (no DB, no API) — same prerequisite as the app
+itself.
+
+**Frontend** (from `web/`):
+
+```bash
+pnpm test
+```
+
+Vitest + Testing Library; `web/src/api/media.ts` calls are mocked per test
+(`vi.mock`), so no running API is needed.
+
 ### Seed test data {#seed-test-data}
 
 No sample video is checked into the repo — `engine/data/input/` is
@@ -401,3 +426,49 @@ Vitest for the UI) — this build gets working code first.
 ## 12. Open questions to close before writing code
 
 None outstanding — all Phase 1 decisions above are final.
+
+---
+
+## 13. Basic FFmpeg pipeline (`docs/README.md` Phase 2, step 7)
+
+`trigger_processing()`'s copy-through placeholder (§1) has been replaced by
+a real, fixture-driven pipeline — `aifun.assemble.run_basic_assembly()`,
+invoked from `aifun/processing.py` in place of the old `shutil.copyfile`.
+
+For a video, per media row:
+1. **Highlight fixture** (`aifun/editing/highlights.py`) — since Dev A1's
+   real highlight scoring (`aifun.analysis`) is still a stub, a single
+   hand-authored highlight is built matching
+   `contracts/highlight.schema.json`'s shape: the first 30s of the clip (or
+   the whole thing, if shorter). See
+   `engine/config/fixtures/highlights.sample.json` for the shape.
+2. **Cut** (`editing/clip.py`) — ffmpeg trims to that window.
+3. **Reframe** (`editing/reframe.py`) — scale-to-cover + center-crop to
+   1080×1920 (9:16, matching `config/settings.yaml`).
+4. **Audio mix** (`editing/audio.py`) — `engine/assets/music/fixture_track.mp3`
+   (an 8s placeholder tone, checked in — stands in for Phase 5's real
+   trending-audio pick) is looped underneath the clip's own audio, or used
+   as the sole track if the source has none (`utils/media.has_audio_stream`).
+5. **Export** (`export/__init__.py`) — the rendered file is copied to
+   `engine/data/output/{media_id}.mp4`.
+
+A photo skips cut/audio — just reframed to 1080×1920 and kept at its
+original extension.
+
+**`GET /media/{id}/output`** now derives `Content-Type` and the download
+filename from the *output* file, not the upload's stored `mime_type`/
+`original_filename` — video is always re-muxed to mp4 regardless of the
+source container (so a `.mov` upload downloads as `.mp4`), which the old
+copy-through placeholder never surfaced since it never changed containers.
+
+This is deliberately **not** wired through `aifun/pipeline.py` /
+`aifun/cli.py`'s `process` command — those already fail before reaching
+`aifun.editing` (`pipeline.py` imports a `load_video` that
+`aifun.ingest` doesn't define), being scaffold for the full future
+pipeline once Dev A1's `transcribe`/`analysis` land for real. This slice
+only needs `aifun.editing`/`render`/`export`, which it now drives directly.
+
+Containerized: `engine/Dockerfile` now also `COPY assets ./assets` — without
+it the background-mix step would silently no-op inside the container
+(`FIXED_BACKGROUND_TRACK.exists()` would be `False`), degrading gracefully
+but silently.
