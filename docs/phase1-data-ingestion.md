@@ -279,6 +279,38 @@ neither happens as a side effect of normal stop/start.
 an upload with a throwaway synthetic clip (no need for a real sample file —
 see [§ seed data](#seed-test-data) below for why one isn't checked in):
 
+### Running the frontend
+
+**Local (venv-equivalent):**
+
+```bash
+cd web && pnpm install && pnpm dev   # http://localhost:5173
+```
+
+**Containerized:** the `web` service in `docker-compose.yml` builds
+`web/Dockerfile` (Node + pnpm) and runs the Vite dev server inside the
+container, alongside `postgres` and `api`.
+
+```bash
+# from repo root
+docker compose up --build
+```
+
+`web/Dockerfile` copies `pnpm-workspace.yaml` before `pnpm install` — it
+carries the `allowBuilds` decision from `pnpm approve-builds` (needed for
+esbuild's native postinstall), so a non-interactive container build doesn't
+stall waiting for that prompt.
+
+The compose file bind-mounts `./web:/app` (with an anonymous volume over
+`/app/node_modules` so the container's own Linux-built `node_modules` isn't
+shadowed by the host's) so edits to `web/src` hot-reload without a rebuild —
+`--build` is only needed after changing `web/package.json` or
+`web/Dockerfile` itself.
+
+`VITE_API_BASE_URL` is set to `http://localhost:8000` (the host-exposed
+port), not the `api` service's Docker DNS name — `fetch` calls from
+`web/src/api/media.ts` run in the browser, not inside the container network.
+
 ```bash
 ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=10 -y /tmp/sample.mp4 -loglevel error
 curl -X POST http://localhost:8000/media \

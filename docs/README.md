@@ -292,8 +292,12 @@ AiFun/
 ```bash
 git clone https://github.com/AkashPatra12/AiFun.git
 cd AiFun
-docker compose up -d                     # redis + postgres
+docker compose up --build                # postgres + engine API + web SPA
 
+# or run any piece locally instead:
 cd web && pnpm install && pnpm dev                                            # Platform SPA, Dev B
 cd ../engine && pip install -r requirements.txt && uvicorn main:app --reload  # Engine API (auth, projects, jobs) + worker, Dev A
 ```
+
+See `docs/phase1-data-ingestion.md` §10 for containerized-vs-local tradeoffs
+for each service.
