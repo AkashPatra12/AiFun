@@ -8,6 +8,7 @@ engine/**/__pycache__/
 backend/**/*.pyc
 engine/.venv/
 engine/.env
+engine/.pytest_cache/
 
 engine/data/input/*
 engine/data/interim/*

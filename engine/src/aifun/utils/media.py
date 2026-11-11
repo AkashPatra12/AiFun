@@ -48,3 +48,21 @@ def probe_metadata(path: Path) -> dict:
         "width": width,
         "height": height,
     }
+
+
+def has_audio_stream(path: Path | str) -> bool:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-print_format", "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    return bool(json.loads(result.stdout).get("streams"))
